@@ -13,5 +13,5 @@ func main() {
 		})
 	})
 
-	server.Run(":8080")
+	server.Run(":3000")
 }

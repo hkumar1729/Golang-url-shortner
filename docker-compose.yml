@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: server
+    ports: 
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - cache
+    env_file:
+      - .env
+    restart: unless-stopped
+  
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: url_shortener
+    ports:
+      - "5432:5432"
+    volumes: 
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  cache:
+    image: redis:6.2-alpine
+    restart: always
+    ports: 
+      - '6379:6379'
+    command: redis-server --save 20 1 --loglevel warning --requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
+    volumes:
+      - cache:/data
+
+volumes:
+  pgdata:
+  cache:
+    driver: local

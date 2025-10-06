@@ -2,11 +2,91 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hkumar1729/Url-shortener-API/db"
+	"github.com/hkumar1729/Url-shortener-API/entity"
+	"github.com/hkumar1729/Url-shortener-API/internal/adapters/cache"
 	"github.com/hkumar1729/Url-shortener-API/internal/database"
+	"github.com/hkumar1729/Url-shortener-API/utils"
 )
+
+func getShortUrls(c *gin.Context) {
+	database.Init()
+	defer database.PrismaClient.Prisma.Disconnect()
+	urls, err := database.PrismaClient.URL.FindMany().Exec(database.Ctx)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.IndentedJSON(http.StatusOK, urls)
+}
+
+func createShortUrl(c *gin.Context) {
+	var input entity.Url
+	if err := c.BindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+
+	database.Init()
+	defer database.PrismaClient.Prisma.Disconnect()
+
+	newEntry, err := database.PrismaClient.URL.CreateOne(
+		db.URL.OriginalURL.Set(input.Url),
+		db.URL.ShortenedURL.Set("temp"),
+	).Exec(database.Ctx)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"errro": err.Error()})
+	}
+
+	key := utils.GenerateUrlKey(newEntry.OriginalURL)
+
+	_, err = database.PrismaClient.URL.FindUnique(
+		db.URL.ID.Equals(newEntry.ID),
+	).Update(
+		db.URL.ShortenedURL.Set(key),
+	).Exec(database.Ctx)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+
+	host := c.Request.Host // domain name or localhost
+
+	shortURL := fmt.Sprintf("%s://%s/%s", scheme, host, key)
+
+	c.JSON(http.StatusOK, gin.H{
+		"short-url": shortURL,
+	})
+
+}
+
+func redirectUrl(c *gin.Context) {
+	key := c.Param("shorturl")
+
+	cache.InitRedis()
+	defer cache.RedisClient.Close()
+
+	database.Init()
+	defer database.PrismaClient.Prisma.Disconnect()
+
+	url, err := database.PrismaClient.URL.FindFirst(
+		db.URL.ShortenedURL.Equals(key),
+	).Exec(database.Ctx)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Redirect(http.StatusMovedPermanently, url.OriginalURL)
+}
 
 func main() {
 
@@ -18,19 +98,9 @@ func main() {
 		})
 	})
 
-	database.Init()
-	defer database.PrismaClient.Prisma.Disconnect()
-
-	newURL, err := database.PrismaClient.URL.CreateOne(
-		db.URL.OriginalURL.Set("https://example.com"),
-		db.URL.ShortenedURL.Set("exmpl"),
-	).Exec(database.Ctx)
-
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Created URL ID:", newURL.ID)
+	server.GET("/shorturl", getShortUrls)
+	server.POST("/shorturl", createShortUrl)
+	server.GET("/:shorturl", redirectUrl)
 
 	server.Run(":3000")
 }

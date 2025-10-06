@@ -8,9 +8,8 @@ generator db {
 }
  
 model Url {
-  id        String   @default(cuid()) @id
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  originalURL     String
-  shortenedURL String   
+  id            Int   @id @default(autoincrement())
+  createdAt     DateTime @default(now())
+  originalURL   String
+  shortenedURL  String?
 }

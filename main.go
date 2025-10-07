@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hkumar1729/Url-shortener-API/db"
@@ -74,6 +75,12 @@ func redirectUrl(c *gin.Context) {
 	cache.InitRedis()
 	defer cache.RedisClient.Close()
 
+	cachedUrl, err := cache.RedisClient.Get(cache.Ctx, key).Result()
+	if err == nil {
+		c.Redirect(http.StatusMovedPermanently, cachedUrl)
+		return
+	}
+
 	database.Init()
 	defer database.PrismaClient.Prisma.Disconnect()
 
@@ -84,6 +91,8 @@ func redirectUrl(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	cache.RedisClient.Set(cache.Ctx, key, url.OriginalURL, 7*24*time.Hour)
 
 	c.Redirect(http.StatusMovedPermanently, url.OriginalURL)
 }

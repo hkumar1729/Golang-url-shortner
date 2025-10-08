@@ -15,6 +15,10 @@ func RedirectUrl(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "short URL not found"})
 		return
 	}
+	// no browser caching
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
 
 	c.Redirect(http.StatusMovedPermanently, url.OriginalURL)
 }

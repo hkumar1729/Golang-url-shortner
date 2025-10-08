@@ -11,5 +11,6 @@ model Url {
   id            Int   @id @default(autoincrement())
   createdAt     DateTime @default(now())
   originalURL   String
-  shortenedURL  String?
+  shortenedURL  String  @unique
+  countClick    Int     @default(0)
 }

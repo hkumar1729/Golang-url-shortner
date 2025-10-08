@@ -11,27 +11,28 @@ import (
 	"github.com/hkumar1729/Url-shortener-API/utils"
 )
 
-func CreateShortUrlService(c context.Context, OriginalUrl string, host string, scheme string) (string, error) {
+func CreateShortUrl(c context.Context, OriginalUrl string, host string, scheme string) (string, error) {
 	database.Init()
 	defer database.PrismaClient.Prisma.Disconnect()
 
-	newEntry, err := database.PrismaClient.URL.CreateOne(
-		db.URL.OriginalURL.Set(OriginalUrl),
-		db.URL.ShortenedURL.Set("temp"),
+	existing, err := database.PrismaClient.URL.FindFirst(
+		db.URL.OriginalURL.Equals(OriginalUrl),
 	).Exec(database.Ctx)
-
-	if err != nil {
+	if err != nil && err != db.ErrNotFound {
 		return "", err
 	}
 
-	key := utils.GenerateUrlKey(newEntry.OriginalURL)
+	if existing != nil {
+		shortURL := fmt.Sprintf("%s://%s/%s", scheme, host, existing.ShortenedURL)
+		return shortURL, nil
+	}
 
-	_, err = database.PrismaClient.URL.FindUnique(
-		db.URL.ID.Equals(newEntry.ID),
-	).Update(
+	key := utils.GenerateUrlKey(OriginalUrl)
+
+	_, err = database.PrismaClient.URL.CreateOne(
+		db.URL.OriginalURL.Set(OriginalUrl),
 		db.URL.ShortenedURL.Set(key),
 	).Exec(database.Ctx)
-
 	if err != nil {
 		return "", err
 	}
@@ -57,21 +58,33 @@ func Redirect(key string) (*db.URLModel, error) {
 	cache.InitRedis()
 	defer cache.RedisClient.Close()
 
+	database.Init()
+	defer database.PrismaClient.Prisma.Disconnect()
+
 	cachedUrl, err := cache.RedisClient.Get(cache.Ctx, key).Result()
 	if err == nil {
+
+		_, err := database.PrismaClient.URL.FindUnique(
+			db.URL.ShortenedURL.Equals(key),
+		).Update(
+			db.URL.CountClick.Increment(1),
+		).Exec(database.Ctx)
+		if err != nil {
+			return nil, err
+		}
+
 		return &db.URLModel{
 			InnerURL: db.InnerURL{
 				OriginalURL:  cachedUrl,
-				ShortenedURL: &key,
+				ShortenedURL: key,
 			},
 		}, nil
 	}
 
-	database.Init()
-	defer database.PrismaClient.Prisma.Disconnect()
-
-	url, err := database.PrismaClient.URL.FindFirst(
+	url, err := database.PrismaClient.URL.FindUnique(
 		db.URL.ShortenedURL.Equals(key),
+	).Update(
+		db.URL.CountClick.Increment(1),
 	).Exec(database.Ctx)
 	if err != nil {
 		return nil, err

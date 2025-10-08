@@ -21,7 +21,7 @@ func CreateShortUrl(c *gin.Context) {
 
 	host := c.Request.Host // domain name or localhost
 
-	shortUrl, err := services.CreateShortUrlService(c, input.Url, host, scheme)
+	shortUrl, err := services.CreateShortUrl(c, input.Url, host, scheme)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
